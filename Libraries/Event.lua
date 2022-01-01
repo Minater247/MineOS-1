@@ -32,7 +32,7 @@ function event.addHandler(callback, interval, times)
 end
 
 function event.removeHandler(handler)
-	checkArg(1, handler, "table")
+	assert(type(handler) == "table", "Handler must be a table")
 
 	if handlers[handler] then
 		handlers[handler] = nil
@@ -65,7 +65,10 @@ function event.pull(preferredTimeout)
 		end
 
 		-- Pulling signal data
-		signalData = { computerPullSignal(timeout - computerUptime()) }
+		if timeout ~= mathHuge then
+			os.startTimer(timeout - computerUptime())
+		end
+		signalData = { computerPullSignal() }
 				
 		-- Handlers processing
 		for handler in pairs(handlers) do
@@ -89,10 +92,10 @@ function event.pull(preferredTimeout)
 		end
 
 		-- Program interruption support. It's faster to do it here instead of registering handlers
-		if (signalData[1] == "key_down" or signalData[1] == "key_up") and event.interruptingEnabled then
+		if (signalData[1] == "key" or signalData[1] == "key_up") and event.interruptingEnabled then
 			-- Analysing for which interrupting key is pressed - we don't need keyboard API for this
 			if event.interruptingKeyCodes[signalData[4]] then
-				interruptingKeysDown[signalData[4]] = signalData[1] == "key_down" and true or nil
+				interruptingKeysDown[signalData[4]] = signalData[1] == "key" and true or nil
 			end
 
 			local shouldInterrupt = true
@@ -121,7 +124,7 @@ end
 
 -- Sleeps "time" of seconds via "busy-wait" concept
 function event.sleep(time)
-	checkArg(1, time, "number", "nil")
+	assert(type(time) == "number" or time == nil, "Time must be a positive number")
 
 	local deadline = computerUptime() + (time or 0)
 	repeat
