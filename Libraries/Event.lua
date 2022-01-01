@@ -7,17 +7,17 @@ local event, handlers, interruptingKeysDown, lastInterrupt = {
 		[46] = true,
 		[56] = true
 	},
-	push = computer.pushSignal
+	push = os.queueEvent
 }, {}, {}, 0
 
-local computerPullSignal, computerUptime, mathHuge, mathMin, skipSignalType = computer.pullSignal, computer.uptime, math.huge, math.min
+local computerPullSignal, computerUptime, mathHuge, mathMin, skipSignalType = os.pullEvent, computer.uptime, math.huge, math.min
 
 --------------------------------------------------------------------------------------------------------
 
 function event.addHandler(callback, interval, times)
-	checkArg(1, callback, "function")
-	checkArg(2, interval, "number", "nil")
-	checkArg(3, times, "number", "nil")
+	assert(type(callback) == "function", "Callback must be a function")
+	assert(type(interval) == "number" or interval == nil, "Interval must be a positive number")
+	assert(times == nil or type(times) == "number" or times == nil, "Times must be a positive number")
 
 	local handler = {
 		callback = callback,
