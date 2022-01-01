@@ -1,23 +1,7 @@
 
--- Checking for required components
-local function getComponentAddress(name)
-	return component.list(name)() or error("Required " .. name .. " component is missing")
-end
+local screenWidth, screenHeight = term.getSize()
 
-local function getComponentProxy(name)
-	return component.proxy(getComponentAddress(name))
-end
-
-local EEPROMProxy, internetProxy, GPUProxy = 
-	getComponentProxy("eeprom"),
-	getComponentProxy("internet"),
-	getComponentProxy("gpu")
-
--- Binding GPU to screen in case it's not done yet
-GPUProxy.bind(getComponentAddress("screen"))
-local screenWidth, screenHeight = GPUProxy.getResolution()
-
-local repositoryURL = "https://raw.githubusercontent.com/IgorTimofeev/MineOS/master/"
+local repositoryURL = "https://raw.githubusercontent.com/Minater247/MineOS-1/master/"
 local installerURL = "Installer/"
 local EFIURL = "EFI/Minified.lua"
 
@@ -35,25 +19,30 @@ local function centrize(width)
 end
 
 local function centrizedText(y, color, text)
-	GPUProxy.fill(1, y, screenWidth, 1, " ")
-	GPUProxy.setForeground(color)
-	GPUProxy.set(centrize(#text), y, text)
+	--GPUProxy.fill(1, y, screenWidth, 1, " ")
+    term.setCursorPos(1, y)
+    term.write(string.rep(" ", screenWidth))
+	--GPUProxy.setForeground(color)
+    term.setTextColor(color)
+	--GPUProxy.set(centrize(#text), y, text)
+    term.setCursorPos(centrize(#text), y)
+    term.write(text)
 end
 
 local function title()
 	local y = math.floor(screenHeight / 2 - 1)
-	centrizedText(y, 0x2D2D2D, "MineOS")
+	centrizedText(y, colors.gray, "MineOS")
 
 	return y + 2
 end
 
 local function status(text, needWait)
-	centrizedText(title(), 0x878787, text)
+	centrizedText(title(), colors.black, text)
 
 	if needWait then
 		repeat
-			needWait = computer.pullSignal()
-		until needWait == "key_down" or needWait == "touch"
+			needWait = os.pullEvent()
+		until needWait == "key" or needWait == "mouse_click"
 	end
 end
 
@@ -61,10 +50,11 @@ local function progress(value)
 	local width = 26
 	local x, y, part = centrize(width), title(), math.ceil(width * value)
 	
-	GPUProxy.setForeground(0x878787)
-	GPUProxy.set(x, y, string.rep("─", part))
-	GPUProxy.setForeground(0xC3C3C3)
-	GPUProxy.set(x + part, y, string.rep("─", width - part))
+	term.setTextColor(colors.lightGray)
+    term.setCursorPos(x, y)
+	term.write(string.rep("─", part))
+    term.setCursorPos(x + part, y)
+	term.write(string.rep("─", width - part))
 end
 
 local function filesystemPath(path)
@@ -80,19 +70,20 @@ local function filesystemHideExtension(path)
 end
 
 local function rawRequest(url, chunkHandler)
-	local internetHandle, reason = internetProxy.request(repositoryURL .. url:gsub("([^%w%-%_%.%~])", function(char)
+	local internetHandle, reason = http.get(repositoryURL .. url:gsub("([^%w%-%_%.%~])", function(char)
 		return string.format("%%%02X", string.byte(char))
 	end))
 
 	if internetHandle then
 		local chunk, reason
 		while true do
-			chunk, reason = internetHandle.read(math.huge)	
+			chunk = internetHandle.readLine()
 			
 			if chunk then
-				chunkHandler(chunk)
+				chunkHandler(chunk.."\n")
 			else
 				if reason then
+                    --TODO: error checking
 					error("Internet request failed: " .. tostring(reason))
 				end
 
@@ -116,16 +107,18 @@ local function request(url)
 	return data
 end
 
+--TODO: what is this?
 local function download(url, path)
-	selectedFilesystemProxy.makeDirectory(filesystemPath(path))
+	--selectedFilesystemProxy.makeDirectory(filesystemPath(path))
+    fs.makeDir(selectedFilesystemProxy.."/"..filesystemPath(path))
 
-	local fileHandle, reason = selectedFilesystemProxy.open(path, "wb")
+	local fileHandle, reason = io.open(selectedFilesystemProxy.."/"..path, "wb")
 	if fileHandle then	
 		rawRequest(url, function(chunk)
-			selectedFilesystemProxy.write(fileHandle, chunk)
+			fileHandle:write(chunk)
 		end)
 
-		selectedFilesystemProxy.close(fileHandle)
+		fileHandle:close()
 	else
 		error("File opening failed: " .. tostring(reason))
 	end
@@ -141,25 +134,39 @@ local function deserialize(text)
 end
 
 -- Clearing screen
-GPUProxy.setBackground(0xE1E1E1)
-GPUProxy.fill(1, 1, screenWidth, screenHeight, " ")
+term.setBackgroundColor(colors.lightGray)
+term.clear()
 
--- Searching for appropriate temporary filesystem for storing libraries, images, etc
+--[[ Searching for appropriate temporary filesystem for storing libraries, images, etc
 for address in component.list("filesystem") do
 	local proxy = component.proxy(address)
 	if proxy.spaceTotal() >= 2 * 1024 * 1024 then
 		temporaryFilesystemProxy, selectedFilesystemProxy = proxy, proxy
 		break
 	end
-end
+end]]
 
--- If there's no suitable HDDs found - then meow
+local sides = {
+    "left",
+    "right",
+    "bottom",
+    "top",
+    "front",
+    "back"
+}
+
+for i=1, #sides do
+    if disk.hasData(sides[i]) then
+        temporaryFilesystemProxy, selectedFilesystemProxy = disk.getMountPath(sides[i]), disk.getMountPath(sides[i])
+        break
+    end
+end
+--if not, then just use the main disk
 if not temporaryFilesystemProxy then
-	status("No appropriate filesystem found", true)
-	return
+    temporaryFilesystemProxy, selectedFilesystemProxy = "/", "/"
 end
 
--- First, we need a big ass file list with localizations, applications, wallpapers
+-- First, we need a massive file list with localizations, applications, wallpapers
 progress(0)
 local files = deserialize(request(installerURL .. "Files.cfg"))
 
