@@ -2,17 +2,12 @@
 local result, reason = ""
 
 do
-	local handle, chunk = component.proxy(component.list("internet")() or error("Required internet component is missing")).request("https://raw.githubusercontent.com/IgorTimofeev/MineOS/master/Installer/Main.lua")
+    if not http then
+        error("Required HTTP API not found!")
+    end
+	local handle, chunk = http.get("https://raw.githubusercontent.com/Minater247/MineOS-1/master/Installer/Main.lua")
 
-	while true do
-		chunk = handle.read(math.huge)
-		
-		if chunk then
-			result = result .. chunk
-		else
-			break
-		end
-	end
+	result = handle.readAll()
 
 	handle.close()
 end
